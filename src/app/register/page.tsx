@@ -1,33 +1,34 @@
 "use client"
 
+import type React from "react"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Lock, MessageSquare } from "lucide-react"
+import { MessageSquare, Shield } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
-import { Input } from "@/components/ui/input"
 import { generateKeyPair } from "@/lib/encryption"
-import { 
-  Popover, 
-  PopoverContent, 
-  PopoverTrigger 
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
 } from "@/components/ui/popover"
-import { 
-  Command, 
-  CommandEmpty, 
-  CommandGroup, 
-  CommandInput, 
-  CommandItem, 
-  CommandList 
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
 } from "@/components/ui/command"
 import { Check, ChevronsUpDown } from "lucide-react"
-// import { cn } from "@/lib/utils"
 
 // Comprehensive country codes with flags
 const countryCodes = [
+  // Same country codes as in the Login component
     { code: "+93", country: "AF", flag: "🇦🇫", name: "Afghanistan" },
     { code: "+355", country: "AL", flag: "🇦🇱", name: "Albania" },
     { code: "+213", country: "DZ", flag: "🇩🇿", name: "Algeria" },
@@ -237,12 +238,13 @@ interface Country {
   name: string;
 }
 
-export default function Login() {
-  const [step, setStep] = useState<"phone" | "verification">("phone")
+export default function Register() {
+  const [step, setStep] = useState<"phone" | "verification" | "profile">("phone")
   const [phoneNumber, setPhoneNumber] = useState("")
   const [countryCode, setCountryCode] = useState("")
   const [selectedCountry, setSelectedCountry] = useState<Country | null>(null)
   const [verificationCode, setVerificationCode] = useState("")
+  const [name, setName] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [open, setOpen] = useState(false)
   const router = useRouter()
@@ -255,7 +257,6 @@ export default function Login() {
         const response = await fetch('https://ipapi.co/json/')
         const data = await response.json()
         const countryCode = data.country_code
-        
         if (countryCode) {
           const foundCountry = countryCodes.find(c => c.country === countryCode)
           if (foundCountry) {
@@ -276,7 +277,6 @@ export default function Login() {
         setCountryCode(defaultCountry?.code || "+1")
       }
     }
-    
     detectCountry()
   }, [])
 
@@ -286,8 +286,7 @@ export default function Login() {
 
     try {
       const fullPhoneNumber = countryCode + phoneNumber.replace(/^0+/, '')
-      
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch("/api/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -323,25 +322,17 @@ export default function Login() {
     setIsLoading(true)
 
     try {
-      // Generate key pair for end-to-end encryption if not already stored
-      let privateKey = localStorage.getItem("privateKey")
-      let publicKey
-      let deviceId = localStorage.getItem("deviceId")
+      // Generate key pair for end-to-end encryption
+      const { publicKey, privateKey } = await generateKeyPair()
 
-      if (!privateKey) {
-        const keyPair = await generateKeyPair()
-        privateKey = keyPair.privateKey as string
-        publicKey = keyPair.publicKey
-        localStorage.setItem("privateKey", privateKey)
-      }
+      // Store private key securely in local storage
+      localStorage.setItem("privateKey", privateKey)
 
-      if (!deviceId) {
-        deviceId = crypto.randomUUID()
-        localStorage.setItem("deviceId", deviceId)
-      }
+      // Generate a unique device ID
+      const deviceId = crypto.randomUUID()
+      localStorage.setItem("deviceId", deviceId)
 
       const fullPhoneNumber = countryCode + phoneNumber.replace(/^0+/, '')
-
       const response = await fetch("/api/auth/verify", {
         method: "POST",
         headers: {
@@ -362,7 +353,11 @@ export default function Login() {
         throw new Error(data.error || "Failed to verify code")
       }
 
-      router.push("/chat")
+      if (data.isNewUser) {
+        setStep("profile")
+      } else {
+        router.push("/chat")
+      }
     } catch (error) {
       toast({
         variant: "destructive",
@@ -374,78 +369,100 @@ export default function Login() {
     }
   }
 
+  const handleProfileSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsLoading(true)
+
+    try {
+      const response = await fetch("/api/user/profile", {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || "Failed to update profile")
+      }
+
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been updated successfully.",
+      })
+
+      router.push("/chat")
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update profile",
+      })
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-gray-900 to-gray-800 text-white p-4 relative overflow-hidden">
       {/* Premium SVG Background */}
       <div className="fixed inset-0 w-full h-full z-0 pointer-events-none">
-        <svg 
-          viewBox="0 0 800 600" 
-          preserveAspectRatio="xMidYMid slice"
-          className="w-full h-full"
-          xmlns="http://www.w3.org/2000/svg"
-        >
+        <svg viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
           {/* Gradient Definitions */}
           <defs>
             <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#10B981" stopOpacity="0.3" />
               <stop offset="100%" stopColor="#0D9488" stopOpacity="0.7" />
             </linearGradient>
-            
             <linearGradient id="goldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#F9A826" />
               <stop offset="100%" stopColor="#F59E0B" />
             </linearGradient>
-            
             <linearGradient id="emeraldGradient" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#10B981" />
               <stop offset="100%" stopColor="#0D9488" />
             </linearGradient>
-            
             <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
               <feGaussianBlur stdDeviation="10" result="blur" />
               <feComposite in="SourceGraphic" in2="blur" operator="over" />
             </filter>
           </defs>
-          
           {/* Background */}
           <rect x="0" y="0" width="800" height="600" fill="#111827" />
-          
           {/* Premium Background Elements */}
           <g className="luxury-pattern" opacity="0.05">
             <path d="M0,0 L800,0 L800,600 L0,600 Z" fill="url(#goldGradient)" />
             <path d="M0,150 L800,150" stroke="#F9A826" strokeWidth="0.5" strokeDasharray="4,8" />
             <path d="M0,300 L800,300" stroke="#F9A826" strokeWidth="0.5" strokeDasharray="4,8" />
             <path d="M0,450 L800,450" stroke="#F9A826" strokeWidth="0.5" strokeDasharray="4,8" />
-            
             <path d="M150,0 L150,600" stroke="#F9A826" strokeWidth="0.5" strokeDasharray="4,8" />
             <path d="M400,0 L400,600" stroke="#F9A826" strokeWidth="0.5" strokeDasharray="4,8" />
             <path d="M650,0 L650,600" stroke="#F9A826" strokeWidth="0.5" strokeDasharray="4,8" />
           </g>
-          
           {/* Animated Background Elements */}
           <g className="background-elements">
             <circle className="moving-circle" cx="100" cy="300" r="80" fill="url(#bgGradient)" opacity="0.2">
               <animateMotion dur="40s" repeatCount="indefinite" path="M100,300 C150,200 650,100 700,350 C650,450 150,500 100,300" />
             </circle>
-            
             <circle className="moving-circle" cx="700" cy="300" r="100" fill="url(#bgGradient)" opacity="0.15">
               <animateMotion dur="35s" repeatCount="indefinite" path="M700,300 C650,400 150,500 100,250 C150,150 650,100 700,300" />
             </circle>
-            
             <circle className="moving-circle" cx="200" cy="200" r="60" fill="url(#bgGradient)" opacity="0.1">
               <animateMotion dur="30s" repeatCount="indefinite" path="M200,200 C350,150 450,350 300,400 C150,350 100,250 200,200" />
             </circle>
-            
             <circle className="moving-circle" cx="600" cy="400" r="70" fill="url(#bgGradient)" opacity="0.12">
               <animateMotion dur="45s" repeatCount="indefinite" path="M600,400 C500,450 300,350 400,200 C500,150 650,250 600,400" />
             </circle>
           </g>
-          
           {/* Message Icon - Centered */}
           <g transform="translate(400, 300)" filter="url(#glow)" opacity="0.15">
-            <path 
-              d="M-100,-75 L100,-75 C115,-75 125,-65 125,-50 L125,50 C125,65 115,75 100,75 L0,75 L-25,100 L-30,75 L-100,75 C-115,75 -125,65 -125,50 L-125,-50 C-125,-65 -115,-75 -100,-75 Z" 
-              fill="url(#emeraldGradient)" 
+            <path
+              d="M-100,-75 L100,-75 C115,-75 125,-65 125,-50 L125,50 C125,65 115,75 100,75 L0,75 L-25,100 L-30,75 L-100,75 C-115,75 -125,65 -125,50 L-125,-50 C-125,-65 -115,-75 -100,-75 Z"
+              fill="url(#emeraldGradient)"
               stroke="url(#goldGradient)"
               strokeWidth="3"
             />
@@ -464,9 +481,9 @@ export default function Login() {
         {step === "phone" && (
           <Card className="bg-gray-800 bg-opacity-70 backdrop-blur-sm border border-gray-700 border-opacity-50 text-white">
             <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl font-bold text-center text-amber-300">Log in to your account</CardTitle>
+              <CardTitle className="text-2xl font-bold text-center text-amber-300">Create your account</CardTitle>
               <CardDescription className="text-center text-gray-300">
-                Enter your phone number to continue
+                Enter your phone number to get started
               </CardDescription>
             </CardHeader>
             <form onSubmit={handlePhoneSubmit}>
@@ -541,17 +558,17 @@ export default function Login() {
                 </div>
               </CardContent>
               <CardFooter className="flex flex-col gap-4">
-                <Button 
-                  type="submit" 
-                  className="w-full bg-gradient-to-r from-amber-500 to-amber-400 text-gray-900 hover:from-amber-400 hover:to-amber-300" 
+                <Button
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-amber-500 to-amber-400 text-gray-900 hover:from-amber-400 hover:to-amber-300"
                   disabled={isLoading}
                 >
                   {isLoading ? "Sending..." : "Send Verification Code"}
                 </Button>
                 <div className="text-center text-sm text-gray-400">
-                  Don&apos;t have an account?{" "}
-                  <Link href="/register" className="text-amber-400 hover:underline">
-                    Sign up
+                  Already have an account?{" "}
+                  <Link href="/login" className="text-amber-400 hover:underline">
+                    Log in
                   </Link>
                 </div>
               </CardFooter>
@@ -583,12 +600,12 @@ export default function Login() {
                 </div>
               </CardContent>
               <CardFooter className="flex flex-col gap-4">
-                <Button 
-                  type="submit" 
-                  className="w-full bg-gradient-to-r from-amber-500 to-amber-400 text-gray-900 hover:from-amber-400 hover:to-amber-300" 
+                <Button
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-amber-500 to-amber-400 text-gray-900 hover:from-amber-400 hover:to-amber-300"
                   disabled={isLoading}
                 >
-                  {isLoading ? "Verifying..." : "Log In"}
+                  {isLoading ? "Verifying..." : "Verify"}
                 </Button>
                 <Button
                   type="button"
@@ -604,10 +621,58 @@ export default function Login() {
           </Card>
         )}
 
+        {step === "profile" && (
+          <Card className="bg-gray-800 bg-opacity-70 backdrop-blur-sm border border-gray-700 border-opacity-50 text-white">
+            <CardHeader className="space-y-1">
+              <CardTitle className="text-2xl font-bold text-center text-amber-300">Complete your profile</CardTitle>
+              <CardDescription className="text-center text-gray-300">
+                Add your name to help friends recognize you
+              </CardDescription>
+            </CardHeader>
+            <form onSubmit={handleProfileSubmit}>
+              <CardContent className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="name" className="text-gray-200">Your Name</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    placeholder="John Doe"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="bg-gray-700 bg-opacity-50 border-gray-600 text-white focus:border-amber-400 focus:ring-amber-400"
+                    required
+                  />
+                  <p className="text-sm text-gray-400">
+                    This is how you&apos;ll appear to other users
+                  </p>
+                </div>
+              </CardContent>
+              <CardFooter className="flex flex-col gap-4">
+                <Button
+                  type="submit"
+                  className="w-full bg-gradient-to-r from-amber-500 to-amber-400 text-gray-900 hover:from-amber-400 hover:to-amber-300"
+                  disabled={isLoading}
+                >
+                  {isLoading ? "Saving..." : "Complete Setup"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full text-gray-300 hover:text-amber-400 hover:bg-gray-700"
+                  onClick={() => setStep("verification")}
+                  disabled={isLoading}
+                >
+                  Back
+                </Button>
+              </CardFooter>
+            </form>
+          </Card>
+        )}
+
         <div className="mt-6 text-center text-gray-400 text-sm">
           <p>Secure messaging with military-grade encryption</p>
           <p className="mt-1 flex items-center justify-center gap-1">
-            <Lock className="h-3 w-3 text-amber-400" />
+            <Shield className="h-3 w-3 text-amber-400" />
             End-to-end encrypted
           </p>
         </div>
@@ -615,3 +680,4 @@ export default function Login() {
     </div>
   )
 }
+
